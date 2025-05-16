@@ -1,4 +1,4 @@
-# 📦 Arduino Humidity Monitor Using Adafruit Si7021, LCD, and Arduino Uno R4 WiFi
+# 💧 Arduino Humidity Monitor Using Adafruit Si7021, LCD, and Arduino Uno R4 WiFi
 
 > *This project uses the Arduino paired with the Adafruit Si7021 humidity and temperature sensor to track the humidity level of different environments (terrarium or indoor). It alerts users when humidity shifts out of the ideal range through an LCD display, buzzer alerts, and LED indicators (red, yellow, and green).*
 
