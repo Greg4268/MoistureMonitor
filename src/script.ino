@@ -13,6 +13,25 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 // LED pins 
 const int RED_LED = 10, YELLOW_LED = 9, GREEN_LED = 8;
 
+// moist terrarium humidity constants 
+enum terrarium {
+  TERRARIUM_LOW = 60, 
+  TERRARIUM_CLOSE_LOW = 65, 
+  TERRARIUM_CLOSE_HIGH = 88, 
+  TERRARIUM_HIGH = 93
+};
+
+// humidity constants for indoors - not terrarium 
+enum indoor {
+  INDOOR_LOW = 30, 
+  INDOOR_CLOSE_LOW = 35, 
+  INDOOR_CLOSE_HIGH = 55, 
+  INDOOR_HIGH = 60
+};
+
+bool measureIndoor = true;
+bool measureTerrarium = !measureIndoor;
+
 //buzzer 
 const int buzzer = 6;
 
@@ -67,13 +86,19 @@ void loop() {
   }
 
   int currHumidity = sensor.readHumidity();
-  char condition = isHumidityGoodBadOrBetween(currHumidity);
-  // b == bad
-  // c == close
-  // g == good 
+  char condition; 
+  
+  if(measureIndoor){
+    condition = isHumidityGoodBadOrBetweenIndoor(currHumidity);
+  } else {
+    condition = isHumidityGoodBadOrBetweenTerrarium(currHumidity);
+    // b == bad
+    // c == close
+    // g == good 
+  }
 
   if(condition == 'b'){
-    if(isHighHumidity(currHumidity)) {
+    if(isHighHumidity(currHumidity, measureIndoor)) {
       // humidity came back true == high humidity 
       triggerLEDAndBuzzer(condition);
       highHumidityWarningLCD();
@@ -101,18 +126,31 @@ void loop() {
   delay(1000);
 }
 
-bool isHighHumidity(int currHumidity) {
-  if(currHumidity >= 93){
+bool isHighHumidity(int currHumidity, bool measureIndoor) {
+  if(!measureIndoor && currHumidity >= TERRARIUM_HIGH){
+    return true;
+  }
+  else if (measureIndoor && currHumidity >= INDOOR_HIGH) {
     return true;
   }
   return false;
 }
 
-char isHumidityGoodBadOrBetween(int currHumidity){
-  if(currHumidity >= 93 || currHumidity <= 60){
+char isHumidityGoodBadOrBetweenTerrarium(int currHumidity){
+  if(currHumidity >= TERRARIUM_HIGH || currHumidity <= TERRARIUM_LOW){
     return 'b';
   }
-  if(currHumidity >= 88 || currHumidity <= 65){
+  if(currHumidity >= TERRARIUM_CLOSE_HIGH || currHumidity <= TERRARIUM_CLOSE_LOW){
+    return 'c';
+  }
+  return 'g';
+} 
+
+char isHumidityGoodBadOrBetweenIndoor(int currHumidity){
+  if(currHumidity >= INDOOR_HIGH || currHumidity <= INDOOR_LOW){
+    return 'b';
+  }
+  if(currHumidity >= INDOOR_CLOSE_HIGH || currHumidity <= INDOOR_CLOSE_LOW){
     return 'c';
   }
   return 'g';
