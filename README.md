@@ -166,7 +166,7 @@ enum indoor {
 ---
 
 ## 🖼️ Screenshots
-*coming next commit*
+<img src="assets/pic.jpeg" alt="drawing" width="600"/>
 
 ---
 
