@@ -13,6 +13,9 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 // LED pins 
 const int RED_LED = 10, YELLOW_LED = 9, GREEN_LED = 8;
 
+//buzzer 
+const int buzzer = 6;
+
 // humidity and temperature sensor 
 Adafruit_Si7021 sensor = Adafruit_Si7021();
 bool enableHeater = false;
@@ -22,6 +25,7 @@ void setup() {
   pinMode(RED_LED, OUTPUT);
   pinMode(YELLOW_LED, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
+  pinMode(buzzer, OUTPUT);
   // begin serial 
   Serial.begin(115200);
   delay(1000);
@@ -63,24 +67,58 @@ void loop() {
   }
 
   int currHumidity = sensor.readHumidity();
-  if(currHumidity >= 93) {
-    highHumidityWarning(currHumidity);
-    triggerLED(currHumidity);
+  char condition = isHumidityGoodBadOrBetween(currHumidity);
+  // b == bad
+  // c == close
+  // g == good 
+
+  if(condition == 'b'){
+    if(isHighHumidity(currHumidity)) {
+      // humidity came back true == high humidity 
+      triggerLEDAndBuzzer(condition);
+      highHumidityWarningLCD();
+      Serial.print("WARNING: Humidity too high: ");
+      Serial.println(currHumidity);
+    }
+    else {
+      // humidity came back false == low humidity 
+      triggerLEDAndBuzzer(condition);
+      lowHumidityWarningLCD();
+      Serial.print("WARNING: Humidity too low: ");
+      Serial.println(currHumidity);
+    }
   }
-  else if (currHumidity <= 60) {
-    lowHumidityWarning(currHumidity);
-    triggerLED(currHumidity);
+  else if (condition == 'c') {
+    triggerLEDAndBuzzer(condition);
+    closeHumidityWarningLCD();
+    Serial.print("WARNING: Humidity is getting out of ideal range: ");
+    Serial.println(currHumidity);
   }
   else {
-    triggerLED(currHumidity);
+    triggerLEDAndBuzzer(condition);
+    lcd.print("Humidity: GOOD");
   }
   delay(1000);
 }
 
+bool isHighHumidity(int currHumidity) {
+  if(currHumidity >= 93){
+    return true;
+  }
+  return false;
+}
 
-void lowHumidityWarning(int currHumidity) {
-  Serial.print("WARNING: Humidity too low: ");
-  Serial.println(currHumidity);
+char isHumidityGoodBadOrBetween(int currHumidity){
+  if(currHumidity >= 93 || currHumidity <= 60){
+    return 'b';
+  }
+  if(currHumidity >= 88 || currHumidity <= 65){
+    return 'c';
+  }
+  return 'g';
+} 
+
+void lowHumidityWarningLCD() {
   for(byte i = 0; i < 3; i++){
     lcd.print("WARNING");
     delay(200);
@@ -89,9 +127,13 @@ void lowHumidityWarning(int currHumidity) {
   lcd.print("Humidity LOW!");
 }
 
-void highHumidityWarning(int currHumidity) {
-  Serial.print("WARNING: Humidity too high: ");
-  Serial.println(currHumidity);
+void closeHumidityWarningLCD() {
+  lcd.print("Out of ideal");
+  delay(1000);
+  lcd.clear();
+}
+
+void highHumidityWarningLCD() {
   for(byte i = 0; i < 3; i++){
     lcd.print("WARNING");
     delay(200);
@@ -100,18 +142,26 @@ void highHumidityWarning(int currHumidity) {
   lcd.print("Humidity HIGH!");
 }
 
-void triggerLED(int currHumidity) {
-  if(currHumidity < 93 && currHumidity > 60){
+void triggerLEDAndBuzzer(char condition) {
+  if(condition == 'g'){
     digitalWrite(GREEN_LED, HIGH);
     delay(100);
     digitalWrite(GREEN_LED, LOW);
   }
-  if(currHumidity >= 93 || currHumidity <= 60){
+  if(condition == 'b'){
     digitalWrite(RED_LED, HIGH);
-    delay(100);
+    tone(buzzer, 500);
+    delay(200);
     digitalWrite(RED_LED, LOW);
+    noTone(buzzer); // stop buzzer 
+  }
+  else if (condition == 'c') {
+    digitalWrite(YELLOW_LED, HIGH);
+    tone(buzzer, 800);
+    delay(200);
+    digitalWrite(YELLOW_LED, LOW);
+    noTone(buzzer);
   }
 }
-
 
 
