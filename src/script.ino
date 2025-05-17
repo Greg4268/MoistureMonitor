@@ -5,6 +5,18 @@
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_Si7021.h>
 #include <LiquidCrystal.h>
+#include <WiFiS3.h>
+#include <ArduinoJson.h>
+
+int status = WL_IDLE_STATUS;
+WiFiClient client;
+
+char ssid[] = "******";
+char pass[] = "**********";
+
+const char* server = "http://192.168.10.1";
+const int port = 8080;
+const char* path = "/update-info"; 
 
 // LCD Display pins 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
@@ -12,6 +24,15 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 // LED pins 
 const int RED_LED = 10, YELLOW_LED = 9, GREEN_LED = 8;
+
+// alert status for server
+enum AlertStatus { 
+  GOOD, 
+  WARNING_APPROACHING, 
+  WARNING_BAD
+};
+
+AlertStatus currentStatus = GOOD;
 
 // moist terrarium humidity constants 
 enum terrarium {
@@ -54,9 +75,11 @@ void setup() {
     while(true)
       ;
   }
-
   Serial.print("Found Si7021");
   delay(500);
+
+  // connect to WiFi
+  connectToWiFi();
 
   // start lcd 
   Serial.print("Starting LCD connection");
@@ -102,6 +125,8 @@ void loop() {
       // humidity came back true == high humidity 
       triggerLEDAndBuzzer(condition);
       highHumidityWarningLCD();
+      currentStatus = WARNING_BAD;
+      sendAlertToServer(currentStatus);
       Serial.print("WARNING: Humidity too high: ");
       Serial.println(currHumidity);
     }
@@ -109,6 +134,8 @@ void loop() {
       // humidity came back false == low humidity 
       triggerLEDAndBuzzer(condition);
       lowHumidityWarningLCD();
+      currentStatus = WARNING_BAD;
+      sendAlertToServer(currentStatus);
       Serial.print("WARNING: Humidity too low: ");
       Serial.println(currHumidity);
     }
@@ -116,11 +143,15 @@ void loop() {
   else if (condition == 'c') {
     triggerLEDAndBuzzer(condition);
     closeHumidityWarningLCD();
+    currentStatus = WARNING_APPROACHING;
+    sendAlertToServer(currentStatus);
     Serial.print("WARNING: Humidity is getting out of ideal range: ");
     Serial.println(currHumidity);
   }
   else {
     triggerLEDAndBuzzer(condition);
+    currentStatus = GOOD;
+    sendAlertToServer(currentStatus);
     lcd.print("Humidity: GOOD");
   }
   delay(1000);
@@ -157,49 +188,121 @@ char isHumidityGoodBadOrBetweenIndoor(int currHumidity){
 } 
 
 void lowHumidityWarningLCD() {
+  lcd.clear();
   for(byte i = 0; i < 3; i++){
     lcd.print("WARNING");
     delay(200);
     lcd.clear();
+    delay(50);  // Added a small delay after clearing
   }
   lcd.print("Humidity LOW!");
 }
 
 void closeHumidityWarningLCD() {
+  lcd.clear();
   lcd.print("Out of ideal");
   delay(1000);
   lcd.clear();
+  lcd.print("humidity range");
 }
 
 void highHumidityWarningLCD() {
+  lcd.clear();
   for(byte i = 0; i < 3; i++){
     lcd.print("WARNING");
     delay(200);
     lcd.clear();
+    delay(50);  
   }
   lcd.print("Humidity HIGH!");
 }
 
 void triggerLEDAndBuzzer(char condition) {
+  // Turn all LEDs off first
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(GREEN_LED, LOW);
+  noTone(buzzer);
+  
   if(condition == 'g'){
     digitalWrite(GREEN_LED, HIGH);
-    delay(100);
-    digitalWrite(GREEN_LED, LOW);
+    delay(200);
   }
-  if(condition == 'b'){
+  else if(condition == 'b'){
     digitalWrite(RED_LED, HIGH);
     tone(buzzer, 500);
     delay(200);
-    digitalWrite(RED_LED, LOW);
-    noTone(buzzer); // stop buzzer 
   }
   else if (condition == 'c') {
     digitalWrite(YELLOW_LED, HIGH);
     tone(buzzer, 800);
     delay(200);
-    digitalWrite(YELLOW_LED, LOW);
-    noTone(buzzer);
+}
+
+void sendAlertToServer(AlertStatus status) {
+  String statusString;
+
+  switch(status) {
+    case GOOD:
+      statusString = "good";
+      break;
+    case WARNING_APPROACHING:
+      statusString = "warning(approaching bad)";
+      break;
+    case WARNING_BAD:
+      statusString = "warning(bad)";
+      break;
   }
+
+  Serial.print("Sending alert status: ");
+  Serial.println(statusString);
+  
+  // Create JSON document
+  StaticJsonDocument<200> doc;
+  doc["status"] = statusString;
+  
+  String jsonString;
+  serializeJson(doc, jsonString);
+  
+  // Connect to server
+  Serial.print("Connecting to server...");
+  if (client.connect(server, port)) {
+    Serial.println("connected!");
+    
+    // Send HTTP POST request
+    client.println("POST " + path + " HTTP/1.1");
+    client.println("Host: " + String(server));
+    client.println("Content-Type: application/json");
+    client.println("Content-Length: " + String(jsonString.length()));
+    client.println("Connection: close");
+    client.println();
+    client.println(jsonString);
+    
+    // Wait for response
+    unsigned long timeout = millis();
+    while (client.connected() && millis() - timeout < 10000) {
+      if (client.available()) {
+        String line = client.readStringUntil('\n');
+        Serial.println(line);
+      }
+    }
+    
+    client.stop();
+    Serial.println("Connection closed");
+  } else {
+    Serial.println("connection failed!");
+  }
+}
+
+void connectToWiFi() {
+  WiFi.begin(ssid, pass);
+  while(status != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to WiFi");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 
