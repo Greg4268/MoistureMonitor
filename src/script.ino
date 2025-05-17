@@ -8,15 +8,6 @@
 #include <WiFiS3.h>
 #include <ArduinoJson.h>
 
-int status = WL_IDLE_STATUS;
-WiFiClient client;
-
-char ssid[] = "******";
-char pass[] = "**********";
-
-const char* server = "http://192.168.10.1";
-const int port = 8080;
-const char* path = "/update-info"; 
 
 // LCD Display pins 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
@@ -31,8 +22,6 @@ enum AlertStatus {
   WARNING_APPROACHING, 
   WARNING_BAD
 };
-
-AlertStatus currentStatus = GOOD;
 
 // moist terrarium humidity constants 
 enum terrarium {
@@ -50,6 +39,17 @@ enum indoor {
   INDOOR_HIGH = 60
 };
 
+// Forward declare all functions
+void connectToWiFi();
+void sendAlertToServer(AlertStatus status);
+bool isHighHumidity(int currHumidity, bool measureIndoor);
+char isHumidityGoodBadOrBetweenTerrarium(int currHumidity);
+char isHumidityGoodBadOrBetweenIndoor(int currHumidity);
+void lowHumidityWarningLCD();
+void closeHumidityWarningLCD();
+void highHumidityWarningLCD();
+void triggerLEDAndBuzzer(char condition);
+
 bool measureIndoor = true;
 bool measureTerrarium = !measureIndoor;
 
@@ -60,6 +60,11 @@ const int buzzer = 6;
 Adafruit_Si7021 sensor = Adafruit_Si7021();
 bool enableHeater = false;
 uint8_t loopCnt = 0;
+
+//  for status tracking and sending
+bool firstRun = true;  // Flag to track first run
+unsigned long lastStatusSentTime = 0;
+const unsigned long statusSendInterval = 300000;  // Send status update every 5 minutes (300,000 ms) 
 
 void setup() {
   pinMode(RED_LED, OUTPUT);
@@ -75,16 +80,23 @@ void setup() {
     while(true)
       ;
   }
-  Serial.print("Found Si7021");
+
+  Serial.println("Found Si7021");
+
   delay(500);
 
   // connect to WiFi
   connectToWiFi();
 
   // start lcd 
-  Serial.print("Starting LCD connection");
+  Serial.println("Starting LCD connection");
   lcd.begin(16, 2);
-  delay(1000);
+  lcd.clear();
+  lcd.print("Humidity Monitor");
+  lcd.setCursor(0, 1);
+  lcd.print("Starting...");
+  delay(2000);
+  lcd.clear();
 }
 
 void loop() {
@@ -92,10 +104,8 @@ void loop() {
   Serial.print(sensor.readHumidity(), 2);
   Serial.print("\tTemperature: ");
   Serial.println(sensor.readTemperature(), 2);
-  delay(1000);
 
-  // Toggle heater enabled state every 30 seconds to clean sensors ? - this is from the example but might as well remain if it does not impact the reading or improves them 
-  // An ~1.8 degC temperature increase can be noted when heater is enabled
+  // Toggle heater enabled state every 30 seconds to clean sensors
   if (++loopCnt == 30) {
     enableHeater = !enableHeater;
     sensor.heater(enableHeater);
@@ -120,13 +130,17 @@ void loop() {
     // g == good 
   }
 
+  // Save the previous status before updating
+  previousStatus = currentStatus;
+
+  // Update the current status based on the condition
   if(condition == 'b'){
     if(isHighHumidity(currHumidity, measureIndoor)) {
       // humidity came back true == high humidity 
       triggerLEDAndBuzzer(condition);
       highHumidityWarningLCD();
       currentStatus = WARNING_BAD;
-      sendAlertToServer(currentStatus);
+
       Serial.print("WARNING: Humidity too high: ");
       Serial.println(currHumidity);
     }
@@ -135,7 +149,7 @@ void loop() {
       triggerLEDAndBuzzer(condition);
       lowHumidityWarningLCD();
       currentStatus = WARNING_BAD;
-      sendAlertToServer(currentStatus);
+
       Serial.print("WARNING: Humidity too low: ");
       Serial.println(currHumidity);
     }
@@ -144,17 +158,39 @@ void loop() {
     triggerLEDAndBuzzer(condition);
     closeHumidityWarningLCD();
     currentStatus = WARNING_APPROACHING;
-    sendAlertToServer(currentStatus);
     Serial.print("WARNING: Humidity is getting out of ideal range: ");
     Serial.println(currHumidity);
   }
   else {
     triggerLEDAndBuzzer(condition);
     currentStatus = GOOD;
-    sendAlertToServer(currentStatus);
+    lcd.clear();
     lcd.print("Humidity: GOOD");
+    lcd.setCursor(0, 1);
+    lcd.print("Value: ");
+    lcd.print(currHumidity);
+    lcd.print("%");
   }
-  delay(1000);
+
+  // Send alert only if status has changed or it's the first run or periodic update time
+  unsigned long currentTime = millis();
+  if (firstRun || currentStatus != previousStatus || 
+      (currentTime - lastStatusSentTime >= statusSendInterval)) {
+    
+    sendAlertToServer(currentStatus);
+    lastStatusSentTime = currentTime;
+    
+    if (firstRun) {
+      firstRun = false;
+      Serial.println("Initial status sent");
+    } else if (currentStatus != previousStatus) {
+      Serial.println("Status changed - alert sent");
+    } else {
+      Serial.println("Periodic status update sent");
+    }
+  }
+
+  delay(5000);  // adjust for updat speed
 }
 
 bool isHighHumidity(int currHumidity, bool measureIndoor) {
@@ -193,9 +229,13 @@ void lowHumidityWarningLCD() {
     lcd.print("WARNING");
     delay(200);
     lcd.clear();
-    delay(50);  // Added a small delay after clearing
+    delay(50);
   }
   lcd.print("Humidity LOW!");
+  lcd.setCursor(0, 1);
+  lcd.print("Value: ");
+  lcd.print(sensor.readHumidity(), 1);
+  lcd.print("%");
 }
 
 void closeHumidityWarningLCD() {
@@ -204,6 +244,10 @@ void closeHumidityWarningLCD() {
   delay(1000);
   lcd.clear();
   lcd.print("humidity range");
+  lcd.setCursor(0, 1);
+  lcd.print("Value: ");
+  lcd.print(sensor.readHumidity(), 1);
+  lcd.print("%");
 }
 
 void highHumidityWarningLCD() {
@@ -215,6 +259,10 @@ void highHumidityWarningLCD() {
     delay(50);  
   }
   lcd.print("Humidity HIGH!");
+  lcd.setCursor(0, 1);
+  lcd.print("Value: ");
+  lcd.print(sensor.readHumidity(), 1);
+  lcd.print("%");
 }
 
 void triggerLEDAndBuzzer(char condition) {
@@ -237,6 +285,10 @@ void triggerLEDAndBuzzer(char condition) {
     digitalWrite(YELLOW_LED, HIGH);
     tone(buzzer, 800);
     delay(200);
+  }
+  Serial.println("Connected to WiFi");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void sendAlertToServer(AlertStatus status) {
@@ -269,9 +321,16 @@ void sendAlertToServer(AlertStatus status) {
   if (client.connect(server, port)) {
     Serial.println("connected!");
     
-    // Send HTTP POST request
-    client.println("POST " + path + " HTTP/1.1");
-    client.println("Host: " + String(server));
+    // Fixed string concatenation 
+    String postRequest = "POST ";
+    postRequest += path;
+    postRequest += " HTTP/1.1";
+    client.println(postRequest);
+    
+    String hostLine = "Host: ";
+    hostLine += server;
+    client.println(hostLine);
+    
     client.println("Content-Type: application/json");
     client.println("Content-Length: " + String(jsonString.length()));
     client.println("Connection: close");
@@ -295,14 +354,55 @@ void sendAlertToServer(AlertStatus status) {
 }
 
 void connectToWiFi() {
+  // Print connecting message
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  
+  // Initialize connection counter
+  int connectionAttempts = 0;
+  const int maxAttempts = 20;  // Maximum number of attempts (10 seconds)
+  
+  // Start WiFi connection
   WiFi.begin(ssid, pass);
-  while(status != WL_CONNECTED) {
+  
+  // Check WiFi status properly with timeout
+  while (WiFi.status() != WL_CONNECTED && connectionAttempts < maxAttempts) {
     delay(500);
     Serial.print(".");
+    connectionAttempts++;
   }
-  Serial.println("Connected to WiFi");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  
+  // Check if connected successfully
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFailed to connect to WiFi!");
+    Serial.print("WiFi status: ");
+    
+    // Print status code in a human-readable form
+    switch (WiFi.status()) {
+      case WL_IDLE_STATUS:
+        Serial.println("IDLE");
+        break;
+      case WL_NO_SSID_AVAIL:
+        Serial.println("NO SSID AVAILABLE - Check WiFi name");
+        break;
+      case WL_CONNECT_FAILED:
+        Serial.println("CONNECTION FAILED - Check password");
+        break;
+      case WL_DISCONNECTED:
+        Serial.println("DISCONNECTED");
+        break;
+      default:
+        Serial.println(WiFi.status());
+        break;
+    }
+    
+    // Wait a bit before trying again
+    delay(3000);
+    Serial.println("Retrying connection...");
+    connectToWiFi();  
+  }
 }
-
-
