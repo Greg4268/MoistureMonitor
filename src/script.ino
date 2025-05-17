@@ -8,6 +8,14 @@
 #include <WiFiS3.h>
 #include <ArduinoJson.h>
 
+WiFiClient client;
+
+char ssid[] = "****";
+char pass[] = "*****";
+
+const char* server = "https://web-production-6160.up.railway.app/"; 
+const int port = 8080;
+const char* path = "/update-alert";
 
 // LCD Display pins 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
@@ -22,6 +30,10 @@ enum AlertStatus {
   WARNING_APPROACHING, 
   WARNING_BAD
 };
+
+// Keep track of current and previous status to detect changes
+AlertStatus currentStatus = GOOD;
+AlertStatus previousStatus = GOOD;  // Initialize to same as current to avoid initial alert
 
 // moist terrarium humidity constants 
 enum terrarium {
@@ -80,9 +92,7 @@ void setup() {
     while(true)
       ;
   }
-
   Serial.println("Found Si7021");
-
   delay(500);
 
   // connect to WiFi
@@ -140,7 +150,6 @@ void loop() {
       triggerLEDAndBuzzer(condition);
       highHumidityWarningLCD();
       currentStatus = WARNING_BAD;
-
       Serial.print("WARNING: Humidity too high: ");
       Serial.println(currHumidity);
     }
@@ -149,7 +158,6 @@ void loop() {
       triggerLEDAndBuzzer(condition);
       lowHumidityWarningLCD();
       currentStatus = WARNING_BAD;
-
       Serial.print("WARNING: Humidity too low: ");
       Serial.println(currHumidity);
     }
@@ -286,9 +294,6 @@ void triggerLEDAndBuzzer(char condition) {
     tone(buzzer, 800);
     delay(200);
   }
-  Serial.println("Connected to WiFi");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void sendAlertToServer(AlertStatus status) {
