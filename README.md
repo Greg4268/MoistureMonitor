@@ -115,6 +115,9 @@ The system operates as a complete monitoring loop:
 <p align="center">
    <img src="./assets/schematic.png" alt="arduino" width="600"/>
 </p>
+** Please note that the Si7021 Humidity & Temperature sensor is not in this schematic ** 
+
+see readme content for pin connections
 
 ### Software Requirements
 
