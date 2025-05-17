@@ -82,13 +82,13 @@
         </div>
     {% endif %}
     
-    <button class="refresh-btn" onclick="location.reload()">Refresh Status</button>
+    <button class="refresh-btn" onclick="window.location.reload()">Refresh Status</button>
 
     <script>
         // Auto-refresh the page every 30 seconds
         setTimeout(function() {
-            location.reload();
-        }, 30000);
+            window.location.reload();
+        }, 7500);
     </script>
 </body>
 </html>
