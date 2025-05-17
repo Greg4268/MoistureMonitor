@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Create flask app 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder='../../templates')
 auth = HTTPBasicAuth()
 
 users = {
