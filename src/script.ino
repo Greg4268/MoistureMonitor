@@ -8,13 +8,13 @@
 #include <WiFiS3.h>
 #include <ArduinoJson.h>
 
-WiFiClient client;
+WiFiSSLClient client;
 
 char ssid[] = "****";
-char pass[] = "*****";
+char pass[] = "********";
 
-const char* server = "https://web-production-6160.up.railway.app/"; 
-const int port = 8080;
+const char* server = "web-production-6160.up.railway.app"; 
+const int port = 443;
 const char* path = "/update-alert";
 
 // LCD Display pins 
@@ -320,41 +320,68 @@ void sendAlertToServer(AlertStatus status) {
   
   String jsonString;
   serializeJson(doc, jsonString);
+
+  if(WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected; Attempting to reconnect...");
+    connectToWiFi();
+    if(WiFi.status() != WL_CONNECTED) {
+      Serial.println("Failed to reconnect. Cannot send alert ;(");
+      return;
+    }
+  }
   
-  // Connect to server
+  // Connect to server with timeout
   Serial.print("Connecting to server...");
-  if (client.connect(server, port)) {
+  unsigned long connectionStartTime = millis();
+  boolean connected = false;
+  
+  // Try to connect with timeout
+  while (millis() - connectionStartTime < 5000) { // 5 second timeout
+    if (client.connect(server, port)) {
+      connected = true;
+      break;
+    }
+    delay(100);
+    Serial.print(".");
+  }
+  
+  if (connected) {
     Serial.println("connected!");
     
-    // Fixed string concatenation 
-    String postRequest = "POST ";
-    postRequest += path;
-    postRequest += " HTTP/1.1";
-    client.println(postRequest);
-    
-    String hostLine = "Host: ";
-    hostLine += server;
-    client.println(hostLine);
-    
+    // Send the HTTP request
+    client.println("POST " + String(path) + " HTTP/1.1");
+    client.println("Host: " + String(server));
     client.println("Content-Type: application/json");
     client.println("Content-Length: " + String(jsonString.length()));
     client.println("Connection: close");
     client.println();
     client.println(jsonString);
     
-    // Wait for response
-    unsigned long timeout = millis();
-    while (client.connected() && millis() - timeout < 10000) {
+    // Wait for response with timeout
+    Serial.println("Waiting for response...");
+    unsigned long responseStartTime = millis();
+    boolean responseReceived = false;
+    
+    while (client.connected() && millis() - responseStartTime < 10000) {
       if (client.available()) {
+        responseReceived = true;
         String line = client.readStringUntil('\n');
         Serial.println(line);
       }
+    }
+    
+    if (!responseReceived) {
+      Serial.println("No response received from server (timeout)");
     }
     
     client.stop();
     Serial.println("Connection closed");
   } else {
     Serial.println("connection failed!");
+    Serial.print("WiFi status: ");
+    Serial.println(WiFi.status());
+    Serial.print("Signal strength (RSSI): ");
+    Serial.println(WiFi.RSSI());
   }
 }
 

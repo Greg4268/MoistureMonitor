@@ -56,23 +56,23 @@
     </style>
 </head>
 <body>
-    <h1>System Alert Status</h1>
+    <h1>Humidity Alert Status</h1>
     
     {% if alert %}
         {% if alert.status == "good" %}
             <div class="alert-box good">
                 <h2>Status: Good</h2>
-                <p>All systems are operating normally.</p>
+                <p>Humidity is within normal ranges.</p>
             </div>
         {% elif alert.status == "warning(approaching bad)" %}
             <div class="alert-box warning-approaching">
                 <h2>Status: Warning - Approaching Critical</h2>
-                <p>System parameters are approaching critical levels. Please check soon.</p>
+                <p>Humidity levels are approaching critical ranges. Please check soon.</p>
             </div>
         {% elif alert.status == "warning(bad)" %}
             <div class="alert-box warning-bad">
                 <h2>Status: Warning - Critical</h2>
-                <p>System parameters have reached critical levels. Immediate attention required!</p>
+                <p>Humidity range is out of specified 'safe' range. Immediate attention required!</p>
             </div>
         {% endif %}
         <div class="timestamp">Last updated: {{ alert.timestamp }}</div>
@@ -88,7 +88,7 @@
         // Auto-refresh the page every 30 seconds
         setTimeout(function() {
             window.location.reload();
-        }, 7500);
+        }, 5000);
     </script>
 </body>
 </html>

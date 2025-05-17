@@ -15,8 +15,11 @@ app = Flask(__name__, template_folder='../../templates')
 auth = HTTPBasicAuth()
 
 users = {
-    os.environ.get('AUTH_USERNAME', "admin"): generate_password_hash(os.environ.get('AUTH_PASSWORD', "change_this_password"))
+    os.environ.get('AUTH_USERNAME'): generate_password_hash(os.environ.get('AUTH_PASSWORD'))
 }
+
+if None in users or not users:
+    raise ValueError("AUTH_USERNAME and AUTH_PASSWORD environment variables must be set")
 
 # Store the current alert status
 current_alert = {
